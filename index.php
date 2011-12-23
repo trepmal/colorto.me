@@ -2,84 +2,125 @@
 require_once('functions.php');
 error_reporting(0);
 
+	//in case of url like: http://colorto.me/?colors=abc/def
 	if (isset($_GET['colors'])) {
 		$colors = trim( $_GET['colors'],'/' );
 		header( 'Location:/' . $colors );
 		die();
 	}
 
-	$hexes = explode( '/', $_SERVER['REQUEST_URI'] );
-	$hexes = array_filter( $hexes );
-	$hexes = array_merge( $hexes, array() );
+	//let's figure out what we've been given
+	$hexes = explode( '/', $_SERVER['REQUEST_URI'] ); //get segment
+	$hexes = array_filter( $hexes ); //remove empties
+	$hexes = array_merge( $hexes, array() ); //re-key
 
 	$total = 0;
 	$last = '';
+	
+	//assuming we have at least 1 segment...
 	if ( count( $hexes) > 0 ) {
 
+		//we can create images if given the right option
 		$types = array( 'jpg', 'png', 'gif' );
 		$ext = in_array($hexes[0], $types) ? $hexes[0] : false;
 
+		//if we've been told to create an image
 		if ( $ext ) {
+			//extension is in $ext now, remove from $hexes
 			unset( $hexes[0] );
-			
+
+			//assume at least 2 more segments, dimensions, and color value
+			//if not, die
 			if ( count( $hexes ) < 2 ) {
 					//header("Status: 404 Not Found"); //fast-cgi
 					header("HTTP/1.0 404 Not Found");
-					die();
+					die('No sir, I don\'t like it.');
 			}
+			
+			//since we've unset the extension, the first should be our dimensions
+			//if already numeric, make square with given number
 			if ( is_numeric( $hexes[1] ) ) {
-				$w = $hexes[1];
-				$h = $hexes[1];
+				//setup our width and height
+				$w = $h = $hexes[1];
+				//remove dimensions so that only hex colors are left in $hexes
 				unset( $hexes[1] );
 			}
+			//if not numeric, assume WxH
 			elseif ( strpos( $hexes[1], 'x' ) !== false ) {
-				$dims = explode( 'x', $hexes[1]);
-				$w = intval( $dims[0] );
-				$h = intval( $dims[1] );
+				//explode by 'x'
+				//extract with height
+				list( $w, $h ) = explode( 'x', $hexes[1]);
+
+				//remove dimensions so that only hex colors are left in $hexes
 				unset( $hexes[1] );
 
+				//we should have a postitive area (WxH)
 				if ( ($w * $h) < 1) {
-					//header("Status: 404 Not Found"); //fast-cgi
-					header("HTTP/1.0 404 Not Found");
-					die();
+					header("Status: 404 Not Found"); //fast-cgi
+					//header("HTTP/1.0 404 Not Found");
+					die('No sir, I don\'t like it.');
 				}
 
 			}
+			//if no dimensions discovered use these
 			else {
 				$w = 600;
 				$h = 450;
 			}
 			
+			//enforce maximum dimensions
 			$w = $w > 1000 ? 1000 : $w;
 			$h = $h > 1000 ? 1000 : $h;
 			
-			$rows = 1;
+			//sort of a secret feature
+			//split columns into rows
+			//ex: http://colorto.me/png/400x200/row2/abc/def/431/765
+
+			
+			$rows = 1; //default
+			
+			//basically, if 'row' is in the third segment
+			//divide our columns into appropriate number of rows
+			//
 			if ( strpos( $hexes[2], 'row') !== false ) {
 				$rows = intval( str_replace( 'row', '', $hexes[2] ) );
 				if ($rows < 1) $rows = 1;
+				//remove so that only hex colors are left in $hexes
 				unset( $hexes[2] );
 			}
+			//or, if not 'row', but 'h' make columns horizontal
+			//ex: http://colorto.me/png/400x200/h/abc/def/431/765
 			elseif ( $hexes[2] == 'h') {
 				$rows = 'h';
+				//remove so that only hex colors are left in $hexes
 				unset( $hexes[2] );
 			}
-		}
+		}//end if($ext)
+		
+		//if no extension, also no dimensions
+		//but double-check and remove
 		else if ( strpos( $hexes[0], 'x' ) !== false ) {
 			unset($hexes[0]);
 		}
-		$hexes = array_merge( $hexes, array() );
+		$hexes = array_merge( $hexes, array() ); //re-key since we've probably unset() something
+		//make sure all colors are valid
 		$hexes = array_map( 'color_clean', $hexes );
+		//how many?
 		$total = count( $hexes );
+		//if opted for rows instead of columns, then the number of rows (previously 'h') should be the total
 		$rows = $rows == 'h' ? $total : $rows;
 
+		//use img.php if creating an image
 		if ($ext) {
 			$imgfile = realpath('img.php');
 			require_once($imgfile);
 			die();
 		}
+		//else keep going
 		if ($total) {
 			$last = $hexes[ ($total-1) ];
-			$width = round(100/$total, PHP_ROUND_HALF_DOWN).'%';
+			//determine column width, simple stuff
+			$width = floor(100/$total).'%';
 		}
 	}
 
@@ -95,16 +136,21 @@ error_reporting(0);
 	<link rel="shortcut icon" href="/favicon.gif">
 
 	<link rel="stylesheet" href="/style.css">
-
+	<?php
+		//jquery 1.7.1 - breaks it
+		//specifically, jquery.color.js
+		//haven't investigated further
+	?>
 	<script type="text/javascript" src="http://ajax.googleapis.com/ajax/libs/jquery/1.6.1/jquery.min.js"></script>
 	<script type="text/javascript" src="/js/jquery.color.js"></script>
 	<script type="text/javascript" src="/js/jquery.ui.min.js"></script>
 	<script type="text/javascript" src="/js/jquery.alphanumeric.pack.js"></script>
 	<script type="text/javascript" src="/js/html5slider.js"></script>
 	<script type="text/javascript" src="/js/init.dev.js"></script>
-
 </head>
-<?php if ($total < 1) : ?>
+<?php 
+//$total is the number of url segments, if less that one, show homepage
+if ($total < 1) : ?>
 <body>
 
 	<div id="home">
@@ -129,12 +175,15 @@ error_reporting(0);
 		<p id="credit">By <a href="http://twitter.com/trepmal">@trepmal</a>, and yes, inspired by <a href="http://dummyimage.com/">dummyimage.com</a>.</p>
 	</div>
 
-<?php else : ?>
+<?php
+//otherwise, fanciness!
+else : ?>
 <body id="palette">
 
 	<div id="colors" style="overflow:hidden;background:#<?php echo $last; ?>">
 		<a href="#" id="save">Get share URL</a>
 		<a href="#" id="add">Add Color</a>
+		<a href="https://github.com/trepmal/colorto.me" id="sourcecode">Get source code</a>
 		<?php
 			foreach( $hexes as $k => $color ) {
 				echo '<div class="col" style="width:'.$width.';background:#'.$color.';">';
